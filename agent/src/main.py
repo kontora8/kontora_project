@@ -46,11 +46,22 @@ def publish(client, topic, datasource, delay):
             "user_id": data.user_id
         })
         gps_result = client.publish("gps", gps_msg)
+ 
+        parking_msg = json.dumps({
+            "gps": {
+                "latitude": data.parking.gps.latitude,
+                "longitude": data.parking.gps.longitude,
+            },
+            "empty_count": data.parking.empty_count,
+            "timestamp": data.timestamp.isoformat(),
+            "user_id": data.user_id
+        })
+        parking_result = client.publish("parking", parking_msg)
 
         aggregated_msg = AggregatedDataSchema().dumps(data)
         agg_result = client.publish(topic, aggregated_msg)
 
-        if all(r[0] == 0 for r in [acc_result, gps_result, agg_result]):
+        if all(r[0] == 0 for r in [acc_result, gps_result, parking_result, agg_result]):
             pass
         else:
             print(f"Failed to send some messages to topics")
@@ -60,7 +71,7 @@ def run():
     # Prepare mqtt client
     client = connect_mqtt(config.MQTT_BROKER_HOST, config.MQTT_BROKER_PORT)
     # Prepare datasource
-    datasource = FileDatasource("data/accelerometer.csv", "data/gps.csv")
+    datasource = FileDatasource("data/accelerometer.csv", "data/gps.csv", "data/parking.csv")
     # Infinity publish data
     publish(client, config.MQTT_TOPIC, datasource, config.DELAY)
 
