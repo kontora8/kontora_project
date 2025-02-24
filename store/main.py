@@ -12,6 +12,7 @@ from sqlalchemy import (
     String,
     Float,
     DateTime,
+    insert, select, delete, update
 )
 from config import (
     POSTGRES_HOST,
@@ -22,6 +23,7 @@ from config import (
 )
 import uvicorn
 
+
 # FastAPI app setup
 app = FastAPI()
 
@@ -30,6 +32,8 @@ app = FastAPI()
 DATABASE_URL = f"postgresql+psycopg2://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
 engine = create_engine(DATABASE_URL)
 metadata = MetaData()
+
+
 # Define the ProcessedAgentData table
 processed_agent_data = Table(
     "processed_agent_data",
@@ -43,6 +47,7 @@ processed_agent_data = Table(
     Column("longitude", Float),
     Column("timestamp", DateTime),
 )
+
 SessionLocal = sessionmaker(bind=engine)
 
 
@@ -117,46 +122,69 @@ async def send_data_to_subscribers(data):
 
 
 # FastAPI CRUDL endpoints
-
-
 @app.post("/processed_agent_data/")
 async def create_processed_agent_data(data: List[ProcessedAgentData]):
-    # Insert data to database
-    # Send data to subscribers
-    pass
+    with engine.begin() as conn:
+        for item in data:
+            query = insert(processed_agent_data).values(
+                road_state=item.road_state,
+                x=item.agent_data.accelerometer.x,
+                y=item.agent_data.accelerometer.y,
+                z=item.agent_data.accelerometer.z,
+                latitude=item.agent_data.gps.latitude,
+                longitude=item.agent_data.gps.longitude,
+                timestamp=item.agent_data.timestamp
+            )
+            conn.execute(query)
+    await send_data_to_subscribers([d.dict() for d in data])
+    return {"message": "Дані успішно збережено."}
 
 
-@app.get(
-    "/processed_agent_data/{processed_agent_data_id}",
-    response_model=ProcessedAgentDataInDB,
-)
+@app.get("/processed_agent_data/{processed_agent_data_id}", response_model=ProcessedAgentDataInDB)
 def read_processed_agent_data(processed_agent_data_id: int):
-    # Get data by id
-    pass
+    with engine.connect() as conn:
+        query = select(processed_agent_data).where(processed_agent_data.c.id == processed_agent_data_id)
+        result = conn.execute(query).first()
+
+        if result is None:
+            return {"error": "Дані не знайдено."}
+
+        return dict(result._mapping)
 
 
-@app.get("/processed_agent_data/", response_model=list[ProcessedAgentDataInDB])
+@app.get("/processed_agent_data/", response_model=List[ProcessedAgentDataInDB])
 def list_processed_agent_data():
-    # Get list of data
-    pass
+    with engine.connect() as conn:
+        query = select(processed_agent_data)
+        results = conn.execute(query).fetchall()
+        return [dict(row._mapping) for row in results]
 
 
-@app.put(
-    "/processed_agent_data/{processed_agent_data_id}",
-    response_model=ProcessedAgentDataInDB,
-)
+@app.put("/processed_agent_data/{processed_agent_data_id}", response_model=ProcessedAgentDataInDB)
 def update_processed_agent_data(processed_agent_data_id: int, data: ProcessedAgentData):
-    # Update data
-    pass
+    with engine.begin() as conn:
+        query = update(processed_agent_data).where(
+            processed_agent_data.c.id == processed_agent_data_id
+        ).values(
+            road_state=data.road_state,
+            x=data.agent_data.accelerometer.x,
+            y=data.agent_data.accelerometer.y,
+            z=data.agent_data.accelerometer.z,
+            latitude=data.agent_data.gps.latitude,
+            longitude=data.agent_data.gps.longitude,
+            timestamp=data.agent_data.timestamp
+        )
+        conn.execute(query)
+    return read_processed_agent_data(processed_agent_data_id)
 
 
-@app.delete(
-    "/processed_agent_data/{processed_agent_data_id}",
-    response_model=ProcessedAgentDataInDB,
-)
+@app.delete("/processed_agent_data/{processed_agent_data_id}", response_model=ProcessedAgentDataInDB)
 def delete_processed_agent_data(processed_agent_data_id: int):
-    # Delete by id
-    pass
+    data = read_processed_agent_data(processed_agent_data_id)
+    with engine.begin() as conn:
+        query = delete(processed_agent_data).where(processed_agent_data.c.id == processed_agent_data_id)
+        conn.execute(query)
+    return data
 
 
 if __name__ == "__main__":
