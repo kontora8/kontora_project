@@ -7,70 +7,96 @@ from app.interfaces.hub_gateway import HubGateway
 
 
 class AgentMQTTAdapter(AgentGateway):
-    def __init__(
-        self,
-        broker_host,
-        broker_port,
-        topic,
-        hub_gateway: HubGateway,
-        batch_size=10,
-    ):
+    def __init__(self, broker_host: str, broker_port: int, topic: str, hub_gateway: HubGateway, batch_size: int = 10):
+        """
+        Initializes the AgentMQTTAdapter.
+
+        :param broker_host: The hostname of the MQTT broker.
+        :param broker_port: The port of the MQTT broker.
+        :param topic: The topic to subscribe to.
+        :param hub_gateway: The hub gateway instance to forward processed data.
+        :param batch_size: Number of messages to accumulate before processing (currently not used).
+        """
         self.batch_size = batch_size
-        # MQTT
+        # MQTT configuration
         self.broker_host = broker_host
         self.broker_port = broker_port
         self.topic = topic
         self.client = mqtt.Client()
-        # Hub
+        # Hub interface for forwarding data
         self.hub_gateway = hub_gateway
 
-    def on_connect(self, client, userdata, flags, rc):
+    def on_connect(self, client: mqtt.Client, userdata, flags, rc: int):
+        """
+        Callback triggered when the MQTT client connects to the broker.
+        """
         if rc == 0:
-            logging.info("Connected to MQTT broker")
-            self.client.subscribe(self.topic)
+            logging.info("MQTT connection established with %s:%s", self.broker_host, self.broker_port)
+            client.subscribe(self.topic)
         else:
-            logging.info(f"Failed to connect to MQTT broker with code: {rc}")
+            logging.error("MQTT connection failed with code: %s", rc)
 
-    def on_message(self, client, userdata, msg):
-        """Processing agent data and sent it to hub gateway"""
+    def on_message(self, client: mqtt.Client, userdata, msg: mqtt.MQTTMessage):
+        """
+        Handles incoming MQTT messages: decodes payload, processes sensor data, and forwards to the Hub.
+        """
         try:
-            payload: str = msg.payload.decode("utf-8")
-            # Create AgentData instance with the received data
+            payload = msg.payload.decode("utf-8")
+            logging.debug("Received payload: %s", payload)
+            # Convert JSON payload to an AgentData object
             agent_data = AgentData.model_validate_json(payload, strict=True)
-            # Process the received data (you can call a use case here if needed)
+            # Process sensor data to determine the road condition
             processed_data = process_agent_data(agent_data)
-            # Store the agent_data in the database (you can send it to the data processing module)
+            # Forward the processed data to the Hub
             if not self.hub_gateway.save_data(processed_data):
-                logging.error("Hub is not available")
+                logging.error("Data forwarding failed: Hub gateway unavailable")
+            else:
+                logging.info("Processed data successfully sent to Hub")
         except Exception as e:
-            logging.info(f"Error processing MQTT message: {e}")
+            logging.exception("Error during message processing:")
 
     def connect(self):
+        """
+        Establishes connection to the MQTT broker and sets up callbacks.
+        """
         self.client.on_connect = self.on_connect
         self.client.on_message = self.on_message
-        self.client.connect(self.broker_host, self.broker_port, 60)
+        try:
+            self.client.connect(self.broker_host, self.broker_port, keepalive=60)
+        except Exception as e:
+            logging.exception("Failed to connect to MQTT broker at %s:%s", self.broker_host, self.broker_port)
 
     def start(self):
+        """
+        Starts the MQTT client loop.
+        """
         self.client.loop_start()
 
     def stop(self):
+        """
+        Stops the MQTT client loop and disconnects from the broker.
+        """
         self.client.loop_stop()
+        self.client.disconnect()
 
 
 # Usage example:
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="[%(asctime)s] [%(levelname)s] [%(module)s] %(message)s"
+    )
     broker_host = "localhost"
     broker_port = 1883
     topic = "agent_data_topic"
-    # Assuming you have implemented the StoreGateway and passed it to the adapter
-    store_gateway = HubGateway()
+    # IMPORTANT: Replace HubGateway() with a concrete implementation (e.g., HubMqttAdapter)
+    store_gateway = HubGateway()  # Placeholder; should be replaced with an actual implementation
     adapter = AgentMQTTAdapter(broker_host, broker_port, topic, store_gateway)
     adapter.connect()
     adapter.start()
     try:
-        # Keep the adapter running in the background
         while True:
             pass
     except KeyboardInterrupt:
         adapter.stop()
-        logging.info("Adapter stopped.")
+        logging.info("MQTT Adapter has been stopped.")
