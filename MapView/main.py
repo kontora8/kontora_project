@@ -2,76 +2,71 @@ import asyncio
 from kivy.app import App
 from kivy_garden.mapview import MapMarker, MapView
 from kivy.clock import Clock
-from kivy.logger import Logger
-from lineMapLayer import LineMapLayer
 from datasource import Datasource
+from lineMapLayer import LineMapLayer  # Import the line drawing layer
 
 
 class MapViewApp(App):
     def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.mapview = None
-        self.car_marker = None
+        super().__init__()
         self.datasource = Datasource()
-        self.map_layer = LineMapLayer()
+        self.car_marker = None
+        self.line_layer = LineMapLayer(coordinates=[], color=[1, 0, 0, 1], width=2)  # Red line for path
 
     def on_start(self):
-        """
-        Встановлює необхідні маркери, викликає функцію для оновлення мапи
-        """
-        self.mapview.add_layer(self.map_layer, mode="scatter")
-        self.car_marker = MapMarker(source="images/car.png", lat=50.45, lon=30.52)
-        self.mapview.add_widget(self.car_marker)
+        self.mapview.add_layer(self.line_layer)  # Add the line layer to the map
         Clock.schedule_interval(self.update, 1)
 
     def update(self, *args):
-        """
-        Викликається регулярно для оновлення мапи
-        """
         new_points = self.datasource.get_new_points()
-        for lat, lon, road_state in new_points:
 
-            Logger.info(f"Updating car position: lat={lat}, lon={lon}")
-            self.update_car_marker((lat, lon))
-            self.map_layer.add_point((lat, lon))
+        if not new_points:
+            return
+
+        for latitude, longitude, road_state, air, noise in new_points:
+            if self.car_marker is None:
+                self.car_marker = MapMarker(lat=latitude, lon=longitude, source="images/car.png")
+                self.mapview.add_marker(self.car_marker)
+                self.mapview.center_on(latitude, longitude)
+
+            self.update_car_marker((latitude, longitude))
+
+            if self.line_layer.coordinates is None:
+                self.line_layer.coordinates = [(latitude, longitude)]
+            else:
+                self.line_layer.add_point((latitude, longitude))
 
             if road_state == "pothole":
-                Logger.info(f"Pothole detected at: lat={lat}, lon={lon}")
-                self.set_pothole_marker((lat, lon))
+                self.set_pothole_marker((latitude, longitude))
             elif road_state == "bump":
-                Logger.info(f"Speed bump detected at: lat={lat}, lon={lon}")
-                self.set_bump_marker((lat, lon))
+                self.set_bump_marker((latitude, longitude))
+            if air > 60:
+                self.set_air_marker((latitude, longitude))
+            if noise > 60:
+                self.set_noise_marker((latitude, longitude))
 
     def update_car_marker(self, point):
-        """
-        Оновлює відображення маркера машини на мапі
-        :param point: GPS координати
-        """
-        Logger.info(f"Car marker moved to: lat={point[0]}, lon={point[1]}")
         self.car_marker.lat, self.car_marker.lon = point
+        self.mapview.center_on(point[0], point[1])
 
     def set_pothole_marker(self, point):
-        """
-        Встановлює маркер для ями
-        :param point: GPS координати
-        """
-        pothole_marker = MapMarker(source="images/pothole.png", lat=point[0], lon=point[1])
-        self.mapview.add_widget(pothole_marker)
+        pothole_marker = MapMarker(lat=point[0], lon=point[1], source="images/pothole.png")
+        self.mapview.add_marker(pothole_marker)
 
     def set_bump_marker(self, point):
-        """
-        Встановлює маркер для лежачого поліцейського
-        :param point: GPS координати
-        """
-        bump_marker = MapMarker(source="images/bump.png", lat=point[0], lon=point[1])
-        self.mapview.add_widget(bump_marker)
+        bump_marker = MapMarker(lat=point[0], lon=point[1], source="images/bump.png")
+        self.mapview.add_marker(bump_marker)
+    
+    def set_air_marker(self, point):
+        air_marker = MapMarker(lat=point[0], lon=point[1], source="images/air.png")
+        self.mapview.add_marker(air_marker)
+    
+    def set_noise_marker(self, point):
+        noise_marker = MapMarker(lat=point[0], lon=point[1], source="images/noise.png")
+        self.mapview.add_marker(noise_marker)
 
     def build(self):
-        """
-        Ініціалізує мапу MapView(zoom=15, lat=50.45, lon=30.52)
-        :return: мапу
-        """
-        self.mapview = MapView(zoom=15, lat=50.45, lon=30.52)
+        self.mapview = MapView(zoom=15)
         return self.mapview
 
 

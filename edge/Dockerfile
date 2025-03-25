@@ -1,26 +1,11 @@
-# Use a slim Python 3.9 image as the base
-FROM python:3.9-slim
-
-# Set environment variables for Python
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-
+# Use the official Python image as the base image
+FROM python:latest
 # Set the working directory inside the container
 WORKDIR /app
-
-# Install build dependencies (if needed)
-RUN apt-get update && apt-get install -y --no-install-recommends gcc && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# Copy the requirements file and install Python dependencies
+# Copy the requirements.txt file and install dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy the rest of the application code
+RUN pip install  -r requirements.txt
+# Copy the entire application into the container
 COPY . .
-
-# Expose the port if your app listens on one (optional)
-# EXPOSE 8000
-
-# Start the application
+# Run the main.py script inside the container when it starts
 CMD ["python", "main.py"]

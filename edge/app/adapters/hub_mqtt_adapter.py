@@ -1,65 +1,50 @@
 import logging
+
+import requests as requests
 from paho.mqtt import client as mqtt_client
+
 from app.entities.processed_agent_data import ProcessedAgentData
 from app.interfaces.hub_gateway import HubGateway
 
 
 class HubMqttAdapter(HubGateway):
-    def __init__(self, broker: str, port: int, topic: str):
-        """
-        Initializes the HubMqttAdapter.
-
-        :param broker: The MQTT broker hostname.
-        :param port: The MQTT broker port.
-        :param topic: The MQTT topic to publish processed data.
-        """
+    def __init__(self, broker, port, topic):
         self.broker = broker
         self.port = port
         self.topic = topic
         self.mqtt_client = self._connect_mqtt(broker, port)
 
-    def save_data(self, processed_data: ProcessedAgentData) -> bool:
+    def save_data(self, processed_data: ProcessedAgentData):
         """
-        Publishes processed road data to the Hub via MQTT.
-
-        :param processed_data: Processed road data to be sent.
-        :return: True if the data is published successfully, False otherwise.
+        Save the processed road data to the Hub.
+        Parameters:
+            processed_data (ProcessedAgentData): Processed road data to be saved.
+        Returns:
+            bool: True if the data is successfully saved, False otherwise.
         """
-        try:
-            msg = processed_data.model_dump_json()
-            result = self.mqtt_client.publish(self.topic, msg)
-            if result.rc == mqtt_client.MQTT_ERR_SUCCESS:
-                logging.info("Successfully published message to topic '%s'", self.topic)
-                return True
-            else:
-                logging.error("Failed to publish message to topic '%s'. Status code: %s", self.topic, result.rc)
-                return False
-        except Exception as e:
-            logging.exception("Error occurred while publishing data:")
+        msg = processed_data.model_dump_json()
+        result = self.mqtt_client.publish(self.topic, msg)
+        status = result[0]
+        if status == 0:
+            return True
+        else:
+            print(f"Failed to send message to topic {self.topic}")
             return False
 
     @staticmethod
-    def _connect_mqtt(broker: str, port: int):
-        """
-        Initializes the MQTT client and establishes a connection.
-
-        :param broker: The MQTT broker hostname.
-        :param port: The MQTT broker port.
-        :return: Connected MQTT client instance.
-        """
-        logging.info("Connecting to MQTT broker at %s:%s", broker, port)
+    def _connect_mqtt(broker, port):
+        """Create MQTT client"""
+        print(f"CONNECT TO {broker}:{port}")
 
         def on_connect(client, userdata, flags, rc):
             if rc == 0:
-                logging.info("Connected to MQTT broker at %s:%s", broker, port)
+                print(f"Connected to MQTT Broker ({broker}:{port})!")
             else:
-                logging.error("Failed to connect to MQTT broker at %s:%s with return code %d", broker, port, rc)
+                print("Failed to connect {broker}:{port}, return code %d\n", rc)
+                exit(rc)  # Stop execution
 
         client = mqtt_client.Client()
         client.on_connect = on_connect
-        try:
-            client.connect(broker, port, keepalive=60)
-            client.loop_start()
-        except Exception:
-            logging.exception("MQTT connection error:")
+        client.connect(broker, port)
+        client.loop_start()
         return client

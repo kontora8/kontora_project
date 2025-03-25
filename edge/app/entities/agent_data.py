@@ -6,6 +6,8 @@ class AccelerometerData(BaseModel):
     x: float
     y: float
     z: float
+    air: float
+    noise: float
 
 
 class GpsData(BaseModel):

@@ -29,49 +29,22 @@ def publish(client, topic, datasource, delay):
     while True:
         time.sleep(delay)
         data = datasource.read()
-
-        acc_msg = json.dumps({
-            "x": data.accelerometer.x,
-            "y": data.accelerometer.y,
-            "z": data.accelerometer.z,
-            "timestamp": data.timestamp.isoformat(),
-            "user_id": data.user_id
-        })
-        acc_result = client.publish("accelerometer", acc_msg)
-
-        gps_msg = json.dumps({
-            "latitude": data.gps.latitude,
-            "longitude": data.gps.longitude,
-            "timestamp": data.timestamp.isoformat(),
-            "user_id": data.user_id
-        })
-        gps_result = client.publish("gps", gps_msg)
- 
-        parking_msg = json.dumps({
-            "gps": {
-                "latitude": data.parking.gps.latitude,
-                "longitude": data.parking.gps.longitude,
-            },
-            "empty_count": data.parking.empty_count,
-            "timestamp": data.timestamp.isoformat(),
-            "user_id": data.user_id
-        })
-        parking_result = client.publish("parking", parking_msg)
-
-        aggregated_msg = AggregatedDataSchema().dumps(data)
-        agg_result = client.publish(topic, aggregated_msg)
-
-        if all(r[0] == 0 for r in [acc_result, gps_result, parking_result, agg_result]):
+        msg = AggregatedDataSchema().dumps(data)
+        result = client.publish(topic, msg)
+        # result: [0, 1]
+        status = result[0]
+        if status == 0:
             pass
+            # print(f"Send `{msg}` to topic `{topic}`")
         else:
-            print(f"Failed to send some messages to topics")
+            print(f"Failed to send message to topic {topic}")
 
 
 def run():
     # Prepare mqtt client
     client = connect_mqtt(config.MQTT_BROKER_HOST, config.MQTT_BROKER_PORT)
     # Prepare datasource
-    datasource = FileDatasource("data/accelerometer.csv", "data/gps.csv", "data/parking.csv")
+    datasource = FileDatasource("data/accelerometer.csv", "data/gps.csv")
     # Infinity publish data
     publish(client, config.MQTT_TOPIC, datasource, config.DELAY)
 

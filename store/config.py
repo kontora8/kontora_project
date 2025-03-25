@@ -1,12 +1,9 @@
 import os
-
-
 def try_parse(type, value: str):
     try:
         return type(value)
     except Exception:
         return None
-
 
 # Configuration for POSTGRES
 POSTGRES_HOST = os.environ.get("POSTGRES_HOST") or "localhost"

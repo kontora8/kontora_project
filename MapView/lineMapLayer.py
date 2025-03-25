@@ -53,12 +53,13 @@ class LineMapLayer(MapLayer):
         return self._line_points_offset
 
     def calc_line_points(self):
-        # Offset all points by the coordinates of the first point,
-        # to keep coordinates closer to zero.
-        # (and therefore avoid some float precision issues when drawing lines)
+        if not self.coordinates or len(self.coordinates) == 0:
+            return  # If coordinates are empty, do nothing
+
+        # Compute offset for more accurate line rendering
         self._line_points_offset = (self.get_x(self.coordinates[0][1]),
                                     self.get_y(self.coordinates[0][0]))
-        # Since lat is not a linear transform we must compute manually
+
         self._line_points = [(self.get_x(lon) - self._line_points_offset[0],
                               self.get_y(lat) - self._line_points_offset[1])
                              for lat, lon in self.coordinates]
@@ -102,46 +103,35 @@ class LineMapLayer(MapLayer):
         self._draw_line()
 
     def _draw_line(self, *args):
-        if self._coordinates is None:
-            return
+        if not self._coordinates:
+            return  # Do nothing if there are no coordinates
+
         map_view = self.parent
         self.zoom = map_view.zoom
         self.lon = map_view.lon
         self.lat = map_view.lat
 
-        # When zooming we must undo the current scatter transform
-        # or the animation distorts it
         scatter = map_view._scatter
         sx, sy, ss = scatter.x, scatter.y, scatter.scale
-
-        # Account for map source tile size and map view zoom
         vx, vy, vs = map_view.viewport_pos[0], map_view.viewport_pos[1], map_view.scale
 
         with self.canvas:
             self.opacity = 0.5
-            # Save the current coordinate space context
             PushMatrix()
-
-            # Offset by the MapView's position in the window (always 0,0 ?)
             Translate(*map_view.pos)
 
-            # Undo the scatter animation transform
             Scale(1 / ss, 1 / ss, 1)
             Translate(-sx, -sy)
 
-            # Apply the get window xy from transforms
             Scale(vs, vs, 1)
             Translate(-vx, -vy)
 
-            # Apply what we can factor out of the mapsource long, lat to x, y conversion
             Translate(self.ms / 2, 0)
 
-            # Translate by the offset of the line points
-            # (this keeps the points closer to the origin)
-            Translate(*self.line_points_offset)
+            if self.line_points_offset:
+                Translate(*self.line_points_offset)
 
             Color(*self.color)
             Line(points=self.line_points, width=self._width)
-
-            # Retrieve the last saved coordinate space context
             PopMatrix()
+
